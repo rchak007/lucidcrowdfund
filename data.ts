@@ -1,0 +1,1 @@
+export const contributorSeed: string | null = null;

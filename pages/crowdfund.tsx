@@ -13,8 +13,11 @@ import {fromAssets, toAssets, union, Value} from "../utils/valueUtils"
 import { fromAddress, OfferDatum, OfferInfo, toAddress } from '../utils/offerUtils'
 import { kMaxLength } from 'buffer'
 
-// import * as fs from 'fs';
 
+// import { readFirstLineFromFile } from '../utils/fileUtils';
+
+import * as CryptoJS from 'crypto-js';
+// import { contributorSeed } from '../data';
 
 // const fs = require("fs")
 
@@ -32,7 +35,12 @@ const crowdfund: NextPage = () => {
   const [scriptAddress, setScriptAddress] = useState("")
   const [ariadyTxHash, setAriadyTxHash] = useState("")
   const [efrainTxHash, setEfrainTxHash] = useState("")
-
+  const [inputValue, setInputValue] = useState('');
+  const [inputPrivateKey, setInputValuePrivateKey] = useState('');
+  const [privAddress,setPrivAddress] = useState<string>('');
+  const [txHash,settxHash] = useState<string>('');
+  const [firstLine, setFirstLine] = useState<string>('');
+  const [readSecretData, setReadSecretData] = useState<any>(null);
 
   useEffect(() => {
     if (lucid) {
@@ -70,30 +78,60 @@ const crowdfund: NextPage = () => {
   //       , "contributorsMap" ':= PBuiltinList (PAsData (PTuple (PPubKeyHash) (PInteger) )) ] ))
 
 // Type definition could be auto generated from on-chain script
-  const MyDatumSchema = Data.Object({
-    beneficiary: Data.Bytes(),
-    deadline: Data.Integer(),
-    aCurrency: Data.Bytes(),
-    aToken: Data.Bytes(),
-    targetAmount: Data.Integer(),
-    actualtargetAmountsoFar: Data.Integer(),
-    contributorsMap: Data.Map(Data.Bytes(), Data.Integer()), // Data.Array(Data.Tuple)
-    // colors: Data.Array(Data.Bytes()),
-    // description: Data.Nullable(Data.Bytes()),
-  });
+  const MyDatumSchema = 
+  // Data.Enum([
+    Data.Object({ PDat:
+      Data.Object({
+        beneficiary: Data.Bytes(),
+        deadline: Data.Integer(),
+        aCurrency: Data.Bytes(),
+        aToken: Data.Bytes(),
+        targetAmount: Data.Integer(),
+        actualtargetAmountsoFar: Data.Integer(),
+        contributorsMap: Data.Array(Data.Tuple([Data.Bytes(),Data.Integer()]))
+        // contributorsMap: Data.Map(Data.Bytes(), Data.Integer()), // Data.Array(Data.Tuple)
+      // colors: Data.Array(Data.Bytes()),
+      // description: Data.Nullable(Data.Bytes()),
+      })
+    });
+  // ]);
   type MyDatum = Data.Static<typeof MyDatumSchema>;
   const MyDatum = MyDatumSchema as unknown as MyDatum;
+
+
+// FOR REDEEM - https://github.com/spacebudz/lucid/blob/main/tests/data.test.ts
+// Deno.test("Complex data structure", () => { (section)
+
+// Deno.test("Roundtrip data enum with named args", () => {
+//   /*
+//     - TypeScript:
+
+//     type MyDatum = "Left" | "Down" | { Right: [string]; } | { Up: { x: bigint; y: bigint;}; }
+
+  const MyRedeemerSchema = Data.Enum([
+    Data.Object({ PContribute: 
+      Data.Object(Data.Tuple([Data.Bytes(), Data.Integer()]) ) }),
+    Data.Literal("Pclose"),
+  ]);
+  type MyRedeemer = Data.Static<typeof MyRedeemerSchema>;
+  const MyRedeemer = MyRedeemerSchema as unknown as MyRedeemer;
+
+  // const MyRedeemerContributeSchema = {
+  //   tag: 'contribution', Data.Tuple([ Data.Bytes(), Data.Integer()])
+  // };
+  // type MyRedeemerContribute = Data.Static<typeof MyRedeemerContributeSchema>;
+  // const MyRedeemerContribute = MyRedeemerContributeSchema as unknown as MyRedeemerContribute;
 
   const sDeposit = async () => {
     if (lucid) {
       // const sValCbor = "589b5899010000222323232325333573466e1d200200215333573466ebcd5d0991aab9e375400200e6ae84c8d55cf1baa00100614985854cd5ce2481445061747465726e206d61746368206661696c75726520696e2027646f2720626c6f636b206174207372632f536d616c6c56616c696461746f722e68733a35333a352d3432001635573c0046aae74004dd51aba135744002646aae78dd50008009"
-      const sValCborSmallValidator = "582858260100003232322225333573466ebcc010c014008c010c01400c526165742460046ea800555cf1"  // small validator
-      //const sValCbor = "590a5f590a5c01000032323232323232323232323232323232323232323232323232323232323232323232323232323232323222232323232323232323232323253330343370e90010010991919299981b99b87480080084c8c8c8c8c8c8c8c8c8c8c8c8c8c94ccc114cdc3a4004004264646464646464646464646464a6660a466e1d20000021613232323232323232323232533305d3370e90000010a99982ea9982099b8733303d375660c002a6eb8c180048dd71830008a40042a6608266e1cc100dd5983000a9bad306000f153304133043375660c002a6088666090e00ccc13c138138dd698300079998279bae3060012375c60c002290010998219bab3060015304433304870066609e09c09c6eb4c18003cccc13cdd718300091bae30600114800854ccc1754cc104cdc399981e9bab306000a375c60c000e6eb8c180019200213304333304f04e04e3039375860c060be0086088666090e00ccc13c138138c0e4dd61830182f807999827827027181d01b8a99982e99821982219982438033304f04e04e375a60c001e66609e09c09c607406e66609e09c09c6eb4c18001054ccc1754cc104cdd79830004983000a0a9982099baf3060008306001315330413375e60c000a60c00202a6608266ebcc18001cc1800484cdd7983000318300088a99982e99821982219982438033304f04e04e303a037375660c002a6eacc18002854ccc174cdd7983000b18300058a99982e9981e191919299983019b87480000084c8c198c0fc004c18c00453011e581c0e97aa033ceee762c25285cdcc94287178f01b45a585fd0d4da8387a0030630023063001375406e02e2a6660ba66e25200433303d375660c001409c09c2930b0b0b0b0b0b0b0b0a99982e9981e183001300b8a99982ea9982099b89375a60c00446eb4c18008454cc104cdc49bad3060010375a60c001e266e24dd698300079bad306000f1533305d5330413370e66607a6eacc180054dd718300091bae30600114800854cc104cdc398201bab3060015375a60c001e2a66082660866eacc180054c110ccc121c01998278270271bad306000f33304f375c60c00246eb8c1800452002133043375660c002a6088666090e00ccc13c138138dd698300079998279bae3060012375c60c002290010a99982e99b88375a60c00266eb4c1800645261616161630600023060001375406860b600260b400260b200260b000260ae002609a6096609860ae60ac00260aa002609664a6660a80022c264a6660aa002260ae0042c60aa00266460a044a6660ac00220a6264a6660ac60080022660aa002600660b00042600660b000460b0002644646464a6660ae66e1d200000214a0266e3cdd7182d000802982d001182d0009baa323058304e0013057304d001375c60aa0026eb0c154050c154008c154004dd5191829982480098290041828000982780098270009826800982600098211820182098261825800982500098201991198231129998260008b09929998261919baf374e608c00a6e9cc118004c13c0044c13cc1380044c00cc138008c110c138004008dd61825005182500a1bac30493048007303e304800616304800230480013754608a0026074608800260726086002646084608460846084002608200260806080002606c608001a607c002607a00260780026076002607400260600242c607400460740026ea8c0dcc0d801058c0dc008c0dc004dd5181a18198009814804a99981799b87480000084c8c8c8c8c8c8c9265333036001149858c0d80194ccc0cccdc3a400000426464a66606a66e1cdc6800a40702646464646493299981d0008a4c2c60740066eb4004c0e4004c0dc00c58dd7000981b0008b181b001181b0009baa00130320011533302f3370e900100109924ca6660600022930b0b181900118190009baa006533302b3370e900000109919299981699b87371a002901c0991919299981819b89480000044c8c8c8c94ccc0d14cc0b8cdc3800a4000266e1c005203813232325333037337126e340052040132323232323232323232324994ccc1080045261630420033303b23232323200553330433370e900000109919299982299b87371a002901c0991919191924ca6660940022930b18250019bad0013049001304700316375c002608c0022c608c004608c0026ea8004dd60009820800981f8019bad001303e001303c003375a002607600260720062c6eb8004c0e0004c0d801058dc68009bae0013034001303200316375a0026062002605e0062c6eb8004c0b800458c0b8008c0b8004dd500198109129998138008a4000266e00dd6981518021814800980118140009191919299981399b874800800852000132375a6058600c0026054002605400460540026ea80048c8cdd818138009813981300098139baa0012301f22533302500114a02a66604866ebcc09c00400c5288980118130009111999802001240004666600a00490003ad3756002006460046ea40048888cc07c894ccc094004401454ccc090cdd79814981380080309802181418138008980118130008009299980f8008a4000266603c66ebcc08cc084004dd48079bad3022302137566044604200290001119980f0010008018a50223375e6e98008dd3000919801119299980e180280089128008911801001998029299980e19baf00137509000091280089118010018008009180191998011bab001232223002003374c002244a002ae8c88cc054894ccc06c00440404c8ccc014c07cc0780088cc06ccdd81810980f80180080108009801180e0008009111998021119980380280100080100091801911ba63300337560046eac0048c00888dd4198019bad002375a0024446666008006440040040024601e6004002446464466002006004444a66602e00226602a0060042646464a66603266ebc0080044cc060cdd800119804980e803180e80199980411001002980d8020a99980c99b90375c0046eb80044cc060018cccc0208800400cc06c0100144cc06000ccccc02088004018014c06c010c074008c070010c064004894ccc05400840044cccc00c88004c05c008c0580080052210022253330113370e002900008038998020019980280100091198021ba9002374c00244660066ea4008dd4000911980619bb00020010034bd6f7b630119191919002a99980699b87480000084c8c94ccc03ccdc39b8d001480e04c8c8c94ccc048cdc4a4000002264646464a66602ca6602066e1c005200013370e002901c0991919299980c99b89371a00290200991919191919191919191924ca6660480022930b18120019980e919191919002a99981299b87480000084c8c94ccc09ccdc39b8d001480e04c8c8c8c8c926533302c001149858c0b000cdd6800981580098148018b1bae0013028001163028002302800137540026eb0004c08c004c08400cdd68009810000980f0019bad001301d001301b00316375c002603400260300082c6e34004dd7000980b000980a0018b1bad0013013001301100316375c00260200022c602000460200026ea80048c8c8c94ccc030cdc3a40080042601e0022c601e004601e0026ea80048c030dd50009198038008010a512300222533300800110051330063003300a001300230090012323002233002002001230022330020020014bd702ba05734aae7d5d12ba15573caae741"  // Crowd Fund
+      // const sValCborSmallValidator = "582858260100003232322225333573466ebcc010c014008c010c01400c526165742460046ea800555cf1"  // small validator
+      const sValCbor = "590a5f590a5c01000032323232323232323232323232323232323232323232323232323232323232323232323232323232323222232323232323232323232323253330343370e90010010991919299981b99b87480080084c8c8c8c8c8c8c8c8c8c8c8c8c8c94ccc114cdc3a4004004264646464646464646464646464a6660a466e1d20000021613232323232323232323232533305d3370e90000010a99982ea9982099b8733303d375660c002a6eb8c180048dd71830008a40042a6608266e1cc100dd5983000a9bad306000f153304133043375660c002a6088666090e00ccc13c138138dd698300079998279bae3060012375c60c002290010998219bab3060015304433304870066609e09c09c6eb4c18003cccc13cdd718300091bae30600114800854ccc1754cc104cdc399981e9bab306000a375c60c000e6eb8c180019200213304333304f04e04e3039375860c060be0086088666090e00ccc13c138138c0e4dd61830182f807999827827027181d01b8a99982e99821982219982438033304f04e04e375a60c001e66609e09c09c607406e66609e09c09c6eb4c18001054ccc1754cc104cdd79830004983000a0a9982099baf3060008306001315330413375e60c000a60c00202a6608266ebcc18001cc1800484cdd7983000318300088a99982e99821982219982438033304f04e04e303a037375660c002a6eacc18002854ccc174cdd7983000b18300058a99982e9981e191919299983019b87480000084c8c198c0fc004c18c00453011e581c0e97aa033ceee762c25285cdcc94287178f01b45a585fd0d4da8387a0030630023063001375406e02e2a6660ba66e25200433303d375660c001409c09c2930b0b0b0b0b0b0b0b0a99982e9981e183001300b8a99982ea9982099b89375a60c00446eb4c18008454cc104cdc49bad3060010375a60c001e266e24dd698300079bad306000f1533305d5330413370e66607a6eacc180054dd718300091bae30600114800854cc104cdc398201bab3060015375a60c001e2a66082660866eacc180054c110ccc121c01998278270271bad306000f33304f375c60c00246eb8c1800452002133043375660c002a6088666090e00ccc13c138138dd698300079998279bae3060012375c60c002290010a99982e99b88375a60c00266eb4c1800645261616161630600023060001375406860b600260b400260b200260b000260ae002609a6096609860ae60ac00260aa002609664a6660a80022c264a6660aa002260ae0042c60aa00266460a044a6660ac00220a6264a6660ac60080022660aa002600660b00042600660b000460b0002644646464a6660ae66e1d200000214a0266e3cdd7182d000802982d001182d0009baa323058304e0013057304d001375c60aa0026eb0c154050c154008c154004dd5191829982480098290041828000982780098270009826800982600098211820182098261825800982500098201991198231129998260008b09929998261919baf374e608c00a6e9cc118004c13c0044c13cc1380044c00cc138008c110c138004008dd61825005182500a1bac30493048007303e304800616304800230480013754608a0026074608800260726086002646084608460846084002608200260806080002606c608001a607c002607a00260780026076002607400260600242c607400460740026ea8c0dcc0d801058c0dc008c0dc004dd5181a18198009814804a99981799b87480000084c8c8c8c8c8c8c9265333036001149858c0d80194ccc0cccdc3a400000426464a66606a66e1cdc6800a40702646464646493299981d0008a4c2c60740066eb4004c0e4004c0dc00c58dd7000981b0008b181b001181b0009baa00130320011533302f3370e900100109924ca6660600022930b0b181900118190009baa006533302b3370e900000109919299981699b87371a002901c0991919299981819b89480000044c8c8c8c94ccc0d14cc0b8cdc3800a4000266e1c005203813232325333037337126e340052040132323232323232323232324994ccc1080045261630420033303b23232323200553330433370e900000109919299982299b87371a002901c0991919191924ca6660940022930b18250019bad0013049001304700316375c002608c0022c608c004608c0026ea8004dd60009820800981f8019bad001303e001303c003375a002607600260720062c6eb8004c0e0004c0d801058dc68009bae0013034001303200316375a0026062002605e0062c6eb8004c0b800458c0b8008c0b8004dd500198109129998138008a4000266e00dd6981518021814800980118140009191919299981399b874800800852000132375a6058600c0026054002605400460540026ea80048c8cdd818138009813981300098139baa0012301f22533302500114a02a66604866ebcc09c00400c5288980118130009111999802001240004666600a00490003ad3756002006460046ea40048888cc07c894ccc094004401454ccc090cdd79814981380080309802181418138008980118130008009299980f8008a4000266603c66ebcc08cc084004dd48079bad3022302137566044604200290001119980f0010008018a50223375e6e98008dd3000919801119299980e180280089128008911801001998029299980e19baf00137509000091280089118010018008009180191998011bab001232223002003374c002244a002ae8c88cc054894ccc06c00440404c8ccc014c07cc0780088cc06ccdd81810980f80180080108009801180e0008009111998021119980380280100080100091801911ba63300337560046eac0048c00888dd4198019bad002375a0024446666008006440040040024601e6004002446464466002006004444a66602e00226602a0060042646464a66603266ebc0080044cc060cdd800119804980e803180e80199980411001002980d8020a99980c99b90375c0046eb80044cc060018cccc0208800400cc06c0100144cc06000ccccc02088004018014c06c010c074008c070010c064004894ccc05400840044cccc00c88004c05c008c0580080052210022253330113370e002900008038998020019980280100091198021ba9002374c00244660066ea4008dd4000911980619bb00020010034bd6f7b630119191919002a99980699b87480000084c8c94ccc03ccdc39b8d001480e04c8c8c94ccc048cdc4a4000002264646464a66602ca6602066e1c005200013370e002901c0991919299980c99b89371a00290200991919191919191919191924ca6660480022930b18120019980e919191919002a99981299b87480000084c8c94ccc09ccdc39b8d001480e04c8c8c8c8c926533302c001149858c0b000cdd6800981580098148018b1bae0013028001163028002302800137540026eb0004c08c004c08400cdd68009810000980f0019bad001301d001301b00316375c002603400260300082c6e34004dd7000980b000980a0018b1bad0013013001301100316375c00260200022c602000460200026ea80048c8c8c94ccc030cdc3a40080042601e0022c601e004601e0026ea80048c030dd50009198038008010a512300222533300800110051330063003300a001300230090012323002233002002001230022330020020014bd702ba05734aae7d5d12ba15573caae741"  // Crowd Fund
       const sValidator : SpendingValidator = {
         type: "PlutusV2",
-        script: sValCborSmallValidator
+        script: sValCbor
       }
-    
+    // https://github.com/spacebudz/lucid/blob/main/src/examples/typed_data.ts
       // to print at terminal too
       // const fs = require('fs');
       // const path = require('path');
@@ -104,32 +142,72 @@ const crowdfund: NextPage = () => {
       // writeLog('This message was printed to the npm run dev window.');
       const sValAddress = lucid.utils.validatorToAddress(sValidator)
 
+
+      const { paymentCredential } = lucid.utils.getAddressDetails(
+        await lucid.wallet.address(),
+      );      
+      console.log("Payment pub key hash = ", paymentCredential?.hash!)
       // const datum = Data.to<PasswordDatum>({password: BigInt(24)}, PasswordDatum)
-      const datum : MyDatum = {
-        beneficiary: "313131",    // pubkey hash
-        deadline: 5555n, 
-        aCurrency: "313131",
-        aToken: "myCrowd",
-        targetAmount: 5555n,
-        actualtargetAmountsoFar: 5555n,
-        contributorsMap: new Map([["3131", 555n]])
-      };
+      // const datum : MyDatum = 
+      //   { PDat:
+      //     {
+      //       // beneficiary: fromText("0e97aa033ceee762c25285cdcc94287178f01b45a585fd0d4da8387a"),    // pubkey hash
+      //       beneficiary: paymentCredential?.hash!,    // pubkey hash
+      //       deadline: (lucid.utils.unixTimeToSlot(Date.now() + 1000000)), 
+      //       // lucid.utils.unixTimeToSlot(Date.now() + 1000000),     need to test this out.
+      //       aCurrency: fromText("45cd7f7a6cd2ada53dbbc4ca4b1342392c99f3276cb8f19574c11a99"),
+      //       // aToken: fromText("CrowdFundingToken"),
+      //       aToken: fromText("MyCrowdFund"),
+      //       targetAmount: 5000000n,          // 5 Ada
+      //       actualtargetAmountsoFar: 5555n,
+      //       contributorsMap: [[fromText(paymentCredential?.hash!), 555n]]
+      //     }
+      //   }
+      // Initial first deposit
+      const deadlineCalc = (lucid.utils.unixTimeToSlot(Date.now() + 1000000))
+
+      const policy1 : PolicyId = "6fcf234bee205dc56ad308ea5882eb59045136056de323daf221f9de"
+      console.log("deadline = ", deadlineCalc)
+
+
+
+      const datumInit : MyDatum = 
+        { PDat:
+          {
+            // beneficiary: fromText("0e97aa033ceee762c25285cdcc94287178f01b45a585fd0d4da8387a"),    // pubkey hash
+            beneficiary: paymentCredential?.hash!,    // pubkey hash
+            deadline: BigInt(deadlineCalc),
+            // deadline: 35693597n, 
+            // aCurrency: fromText("45cd7f7a6cd2ada53dbbc4ca4b1342392c99f3276cb8f19574c11a99"),
+            aCurrency: policy1,
+            // aCurrency: "6fcf234bee205dc56ad308ea5882eb59045136056de323daf221f9de",
+            aToken: fromText("CrowdFundingToken"),
+            // aToken: "MyCrowdFund",
+            targetAmount: 30000000n,                // 30 Ada Target
+            actualtargetAmountsoFar: 2000000n,      // Min 2 Ada when we first deposit
+            contributorsMap: [[paymentCredential?.hash!,2000000n]]            // Initial map is blank
+          }
+        };
+      // console.log("Datum = ", datumInit)
+      console.log("policy1 = ", policy1)
+      console.log("datumInit = ", datumInit)
+
+      const datumData = Data.to<MyDatum>( datumInit, MyDatum)
+      console.log("Datum as Data = ", datumData)
       
-      // const datum = Data.to(
-      //   new Constr(0, [BigInt(24)])
-      // )
       console.log("PayToScript Address: ", sValAddress )
       
       const utxos = await lucid.wallet.getUtxos()
       const tx = await lucid.newTx()
-        // .payToContract(sValAddress, {inline: datum}, {lovelace: BigInt(100_000_000)})
-        .payToContract(sValAddress, {inline: datum}, {lovelace: BigInt(100000)})
+        .payToContract(sValAddress, {inline: Data.to(datumInit, MyDatum)}, {lovelace: BigInt(2000000), [policy1 + fromText("MyCrowdFund")]: 1n })
+        // .payToAddress("addr_test...", { [policyId + fromText(assetName)]: 10n })
         .complete();
 
         console.log("Went into sDeposit module:After payto ")
         const signedTx = await tx.sign().complete();
         const txHash = await signedTx.submit();
         console.log("Lock Test TxHash: " + txHash)
+        settxHash(txHash);
         return txHash;
     
     }
@@ -200,10 +278,46 @@ const crowdfund: NextPage = () => {
             {type:"PlutusV2", script: sValCbor}
           const sValAddress = lucid.utils.validatorToAddress(sValidator)
           const valUtxos = await lucid.utxosAt(sValAddress)
-          const datum = Data.to<PasswordDatum>({password: BigInt(24)}, PasswordDatum)
-          // const redeemer = Data.to<PasswordDatum>({password: BigInt(25)}, PasswordDatum)
-          const redeemer = Data.to<PasswordDatum>({password: BigInt(24)}, PasswordDatum)
-    
+
+          // user Contributor wallet to contribute
+          const seed = "year gold install glide mirror useful assault very bid leader shuffle soon hamster betray raven entry very brick leave federal aim dress suit suit"
+          lucid.selectWalletFromSeed(seed);
+
+//        this is what is already at the script
+          const datum1 : MyDatum = 
+            { Dat: 
+              {
+                // beneficiary: fromText("0e97aa033ceee762c25285cdcc94287178f01b45a585fd0d4da8387a"),    // pubkey hash
+                beneficiary: paymentCredential?.hash!,    // pubkey hash
+                deadline: BigInt(deadlineCalc),
+                // deadline: 5555n, 
+                // aCurrency: fromText("45cd7f7a6cd2ada53dbbc4ca4b1342392c99f3276cb8f19574c11a99"),
+                aCurrency: policy1,
+                // aToken: fromText("CrowdFundingToken"),
+                aToken: fromText("MyCrowdFund"),
+                targetAmount: 30000000n,                // 30 Ada Target
+                actualtargetAmountsoFar: 2000000n,      // Min 2 Ada when we first deposit
+                contributorsMap: []             // Initial map is blank
+              }
+            }
+          // Datum we want to deposit
+          const datum2 : MyDatum = 
+            { Dat: 
+              {
+                // beneficiary: fromText("0e97aa033ceee762c25285cdcc94287178f01b45a585fd0d4da8387a"),    // pubkey hash
+                beneficiary: fromText("e9efb9bb50fc3531da4955a7f4d06b22951cbcb373368f978640c3f4"),    // pubkey hash
+                deadline: BigInt(35231522),     // what's already on the UTXO - needs to be same.
+                // deadline: 5555n, 
+                // aCurrency: fromText("45cd7f7a6cd2ada53dbbc4ca4b1342392c99f3276cb8f19574c11a99"),
+                aCurrency: fromText("e0d3120855499e55ef6994a68b2180d265724d62341e55be11826bc4"),
+                // aToken: fromText("CrowdFundingToken"),
+                aToken: fromText("MyCrowdFund"),
+                targetAmount: 30000000n,                // 30 Ada Target
+                actualtargetAmountsoFar: 22000000n,      // Min 2 Ada when we first deposit + this contribution 20 Ada
+                contributorsMap: [[paymentCredential?.hash!, 20000000n]]
+                // contributorsMap: new Map([])             // Initial map is blank
+              }          
+            };
           let found = undefined
     
           for ( let i=0; i<valUtxos.length; i++ ) {
@@ -268,41 +382,11 @@ const crowdfund: NextPage = () => {
     
           const sValAddress = lucid.utils.validatorToAddress(sValidator)
           
-          const datum = Data.to(
-            new Constr(0, [BigInt(24)])
-          )
+          // const datum = Data.to(
+          //   new Constr(0, [BigInt(24)])
+          // )
           console.log("PayToScript Address from New show address button: ", sValAddress )
 
-          // Test writing a master Log file
-          // const now = new Date();
-          // const currentDate = now.toLocaleDateString("en-US");
-          // const currentTime = now.toLocaleTimeString("en-US");
-          // console.log(currentDate, currentTime);
-          // const text0 = console.log("PayToScript Address from New show address button: ", sValAddress )
-          // const text1 = JSON.stringify(console.log("PayToScript Address from New show address button: ", sValAddress ));
-          // const filename = "/home/chakravarti/GitHubRepos/lucidcrowdfunding/pages/masterLog.txt";
-          // // Create a new file if it does not exist.
-          // if (!fs.existsSync(filename)) {
-          //   fs.writeFileSync(filename, "");
-          // }
-
-          // Append the text to the file.
-          // fs.appendFileSync(filename, currentDate); 
-          // fs.appendFileSync(filename, currentTime); 
-          // fs.appendFileSync(filename, text0); 
-          // fs.appendFileSync(filename, text1);  
-
-          // const utxos = await lucid.wallet.getUtxos()
-          // const tx = await lucid.newTx()
-          //   // .payToContract(sValAddress, {inline: datum}, {lovelace: BigInt(100_000_000)})
-          //   .payToContract(sValAddress, {inline: datum}, {lovelace: BigInt(100000)})
-          //   .complete();
-    
-          //   console.log("Went into sDeposit module:After payto ")
-          //   const signedTx = await tx.sign().complete();
-          //   const txHash = await signedTx.submit();
-          //   console.log("Lock Test TxHash: " + txHash)
-          //   return txHash;
         
         }
       }    // End sPrintScriptAddress
@@ -330,20 +414,22 @@ const crowdfund: NextPage = () => {
               { type: "sig", keyHash: paymentCredential.hash },
               {
                 type: "before",
-                slot: lucid.utils.unixTimeToSlot(Date.now() + 1000000),
+                slot: lucid.utils.unixTimeToSlot(Date.now() + 1000000),   // for testing minting 10
               },
             ],
           },
         );    // End minting policy 
             
+      
 
         // Next we derive the policy id from the minting policy script:
         const policyId = lucid.utils.mintingPolicyToId(mintingPolicy);
 
-        const unit = policyId + fromText("CrowdFundingToken");
+        // const unit = policyId + fromText("CrowdFundingToken");
+        const unit = policyId + fromText("MyCrowdFund");
         console.log("Policy ID for our CrowdFunding Token: ", policyId )
         const tx = await lucid.newTx()
-          .mintAssets({ [unit]: 1n })
+          .mintAssets({ [unit]: 10n })    // Mint 10 for testing
           .validTo(Date.now() + 200000)
           .attachMintingPolicy(mintingPolicy)
           .complete();
@@ -357,6 +443,239 @@ const crowdfund: NextPage = () => {
   }  // End sMintCrowdFundToken
 
      
+  const createSeedPhrase = async () => { 
+    if (lucid) {
+      const seed = lucid.utils.generateSeedPhrase();
+      console.log("Seed phrase created: ", seed)
+      lucid.selectWalletFromSeed(seed);
+    }
+  }   // End createSeedPhrase
+
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(event.target.value);
+  };
+
+
+  const handleButtonSDeposit = async () => {
+    try {
+      await sDeposit(); 
+    } catch (error) {
+      // Handle any errors that might occur during the asynchronous operation
+      console.error('Error in SDeposit CrowdFund:', error);
+    }
+  };  
+
+  const handleButtonClickSeedInfo = async () => {
+    try {
+      await infoFromSeed(inputValue); // Use 'await' to wait for the asynchronous function to complete
+    } catch (error) {
+      // Handle any errors that might occur during the asynchronous operation
+      console.error('Error in infoFromSeed:', error);
+    }
+  };  
+
+  
+  const infoFromSeed = async (seed: string) => { 
+    // This test routine i am trying to get address and credentials from Seed from a secret file.
+    // Also getting from Nami connected wallet too.
+
+    // const seed = lucid.utils.generateSeedPhrase();
+    // console.log("Seed phrase created: ", seed)
+    if (lucid) {
+
+      // First lets bring Nami and get its PaymentCredential Hash
+      const { paymentCredential: namiPaymentCredential } = lucid.utils.getAddressDetails(
+        await lucid.wallet.address(),
+      );  
+      const namiCredHash = namiPaymentCredential?.hash!
+      console.log("Nami Cred Hash = ", namiCredHash)
+
+
+      // Now we connect from Seed
+      const options = {
+        accountIndex: 0, // Replace 0 with the desired account index value
+        // You can also provide other optional properties like addressType and password if needed
+        // addressType: "Base",
+        // password: "your_password_here",
+      };
+      lucid.selectWalletFromSeed(seed, options);
+      const address = await lucid.wallet.address();
+      const { paymentCredential: seedCredential } = lucid.utils.getAddressDetails(
+        await lucid.wallet.address(),
+      );       
+      const seedCredHash = seedCredential?.hash!
+      console.log("Seed Cred Hash = ", seedCredHash)
+
+      setPrivAddress(address);
+      console.log("address 0 for seed phrase ", address)
+    }
+  }   // End infoFromSeed
+
+
+  const createPrivateKey = async (key: string) => { 
+    // const seed = lucid.utils.generateSeedPhrase();
+    // console.log("Seed phrase created: ", seed)
+    if (lucid) {
+      // const seed1 = "year gold install glide mirror useful assault very bid leader shuffle soon hamster betray raven entry very brick leave federal aim dress suit suit"
+      // const options = {
+      //   accountIndex: 1, // Replace 0 with the desired account index value
+      //   // You can also provide other optional properties like addressType and password if needed
+      //   // addressType: "Base",
+      //   // password: "your_password_here",
+      // };
+      const privateKey = lucid.utils.generatePrivateKey(); // Bech32 encoded private key
+      lucid.selectWalletFromPrivateKey(privateKey);
+      console.log("Private key ", privateKey)
+      // cboe Hex - 5820fed6c111612c424b6bbe28b42e388faa3ec2102b7cd56fb249dc326a4f808498
+      //Private key ed25519_sk1rkm9k26wpt9524q6pzmf94ltw9z5z2qe0zzhvau0kam46xq8m6yqw3lpcw
+      //crowdfund.tsx:374 address 1 for seed phrase  addr_test1vr4cmkp58duj520sszr3hkfkjpzc04e29nega3acqeadgycxkd60u
+
+      // lucid.selectWalletFromSeed(seed, options);
+      const address = await lucid.wallet.address();
+      // addr_test1vq8f02sr8nhwwckz22zumny59pch3uqmgkjctlgdfk5rs7sx52ldh   - beneficiary from CDP
+      console.log("address 1 for seed phrase ", address)
+    }
+  }   // End infoFromSeed
+
+
+
+  async function writeToServerFile() {
+    try {
+      const response = await fetch('/api/writeToFile', {
+        method: 'POST',
+      });
+  
+      if (response.ok) {
+        console.log('From CrowdFund - Data written to the file successfully!');
+      } else {
+        console.error('Failed to write data to the file.');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  }
+
+ 
+
+  const handleChangePrivateKey = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValuePrivateKey(event.target.value);
+  };
+  const handleButtonClickPriv = async () => {
+    try {
+      await showAddress4PrivateKey(inputPrivateKey); // Use 'await' to wait for the asynchronous function to complete
+    } catch (error) {
+      // Handle any errors that might occur during the asynchronous operation
+      console.error('Error in showAddress4PrivateKey:', error);
+    }
+  };  
+
+  const showAddress4PrivateKey = async (key: string) => { 
+    // Input private will show Address
+    if (lucid) {
+      lucid.selectWalletFromPrivateKey(key);
+      const address = await lucid.wallet.address();
+      // addr_test1vq8f02sr8nhwwckz22zumny59pch3uqmgkjctlgdfk5rs7sx52ldh   - beneficiary from CDP
+      setPrivAddress(address); 
+      console.log("address 1 for seed phrase ", address)
+    }
+  }   // End showAddress4PrivateKey
+
+
+
+  const fetchSecretData = async () => {
+    try {
+      const response = await fetch('/api/getData');
+      const data = await response.json();
+      setReadSecretData(data);
+      if (data.items[0]) {
+        const contributorSeed = data.seed[0].description;
+      }      
+    } catch (error) {
+      console.error('Error fetching secret data:', error);
+    }
+  };  
+
+  const testCode = async () => { 
+    // Input private will show Address
+    if (lucid) {
+      const date1 = Date.now();
+      const date2 = date1 + 10000000000;
+      // 1690862203312
+      // 1690947216000
+      // 1691033616 - 1690862311
+      const slot1 = lucid.utils.unixTimeToSlot(date2)
+      const slotTime1 = lucid.utils.slotToUnixTime(slot1)
+      console.log("date 1 = ", date1)
+      console.log("date 2 = ", date2)
+      console.log("slot 1 = ", slot1)
+      console.log("slotTime 1 = ", slotTime1)
+
+      // Usage
+      const originalText = 'Hello, world!';
+      const encryptionKey = 'myOwnPassword';
+      const encryptedText = encrypt(originalText, encryptionKey);
+      console.log('Encrypted:', encryptedText);
+      
+      const decryptedText = decrypt(encryptedText, encryptionKey);
+      console.log('Decrypted:', decryptedText);      
+
+      //infoFromSeed
+
+      // fetchFirstLine(); // Call the function when the component mounts
+    }
+  }   // End showAddress4PrivateKey
+
+
+// Encrypt function
+  function encrypt(text: string, key: string): string {
+    const encrypted = CryptoJS.AES.encrypt(text, key);
+    return encrypted.toString();
+  }
+
+  // Decrypt function
+  function decrypt(encryptedText: string, key: string): string {
+    const decrypted = CryptoJS.AES.decrypt(encryptedText, key);
+    return decrypted.toString(CryptoJS.enc.Utf8);
+  }
+
+
+  async function fetchFirstLine() {
+    console.log("Starting fetch first line")
+    try {
+      const response = await fetch('/api/read-file', {
+        method: 'GET',
+      })
+      console.log("Starting fetch second line - response.ok = ", response.ok)
+      if (response.ok) {
+        const data = await response.json();
+        console.log('CrowdFund-FetchFirstLine - Data read from file successfully! JSON = ', data);     
+        const firstLine =   data.firstLine
+        setFirstLine(firstLine);
+      } else {
+        console.error('Failed to read data to the file.' , response.status);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  }
+
+
+  // const fetchFirstLine = async () => {
+  //   try {
+  //     console.log("in fetchFirstLine 1st line ")
+  //     const response = await fetch('/api/read-file');
+  //     console.log("in fetchFirstLine 2nd line - response.ok is ", response.ok)
+  //     if (response.ok) {
+  //       const data = await response.json();
+  //       setFirstLine(data.firstLine);
+  //     } else {
+  //       console.error('Error fetching data:', response.statusText);
+  //     }
+  //   } catch (error) {
+  //     console.error('Error fetching data:', error);
+  //   }
+  // };
 
 
   return (
@@ -371,21 +690,76 @@ const crowdfund: NextPage = () => {
       </div>
       <div>Address: {walletStore.address}</div>
       <div className='m-10'>
-        <p> 
+        {/* <p> 
           Emurgo example
-        </p>
+        </p> */}
       </div>
       <div className="mx-60 my-10">
         <button className="btn btn-primary m-5" onClick={() => { sMintCrowdFundToken() }} >sMintCrowdFundToken</button>
         <button className="btn btn-primary m-5" onClick={() => { sPrintScriptAddress() }} >sPrintScriptAddress</button>
-        <button className="btn btn-primary m-5" onClick={() => { sDeposit() }} >sDepositCrowd</button>
+        {/* <button className="btn btn-primary m-5" onClick={() => { sDeposit() }} >sDepositCrowd</button> */}
         <button className="btn btn-secondary m-5" onClick={() => { sSpend() }}>sSpendCrowd</button>
         <button className="btn btn-secondary m-5" onClick={() => { sSpendAndDeposit() }}> sSpendAndDeposit</button>
+        <button className="btn btn-secondary m-5" onClick={() => { writeToServerFile() }}> writeToServerFile</button>
+        <button className="btn btn-secondary m-5" onClick={() => { fetchFirstLine() }}> fetchFirstLine</button>
+      </div>
+
+      <div className="mx-60 my-10">
+        {/* <button className="btn btn-primary m-5" onClick={() => { sDeposit() }} >sDepositCrowd</button> */}
+        <button className="btn btn-secondary m-5" onClick={handleButtonSDeposit}> sDepositCrowd</button>
+        {txHash !== null && <p>Tx Hash: {txHash}</p>}
+      </div>
+
+      <div className="mx-60 my-10">
+        <button className="btn btn-secondary m-5" onClick={() => { createSeedPhrase() }}> createSeedPhrase</button>
+        <button className="btn btn-secondary m-5" onClick={() => { createPrivateKey() }}> createPrivateKey</button>
+        {privAddress !== null && <p>Result: {privAddress}</p>}
+      </div>
+
+      {/* <div className="mx-60 my-10" style={{ padding: '120px' }}> */}
+      <div className="mx-60 my-10" style={{ padding: '40px'}}>
+          <input
+          type="text"
+          value={inputValue}
+          onChange={handleChange}
+          placeholder="Enter your Seed Phrase"
+          style={{ width: '1200px' }} // Set the width to your desired value
+          />
+          {/* <button className="btn btn-secondary m-5" onClick={() => { infoFromSeed(inputValue) }}> infoFromSeed</button> */}
+          <button className="btn btn-secondary m-5" onClick={handleButtonClickSeedInfo}> info From Seed</button>
+          {privAddress !== null && <p>Address: {privAddress}</p>}
+      </div>
+      <div className="mx-60 my-10" style={{ padding: '40px'}}>
+          <input
+          type="text"
+          value={inputPrivateKey}
+          onChange={handleChangePrivateKey}
+          placeholder="Enter your Private key"
+          style={{ width: '800px' }} // Set the width to your desired value
+          />
+          <button className="btn btn-secondary m-5" onClick={handleButtonClickPriv}> Show Address for Private Key</button>
+          {privAddress !== null && <p>Address: {privAddress}</p>}
+      </div>
         {/* <button className="btn btn-secondary m-5" onClick={() => { unlockGuess() }}>Unlock Guess</button>
         <button className="btn btn-secondary m-5" onClick={() => { deploySequentialMint("Boo") }}>Deploy Sequential Mint</button>
         <button className="btn btn-secondary m-5" onClick={() => { getOffers(paymentCredentialOf(walletStore.address)) }}>Unlock Guess</button> */}
+      <div className="mx-60 my-10">
+        <button className="btn btn-secondary m-5" onClick={() => { testCode() }}> testCode</button>
+        <h1>First Line from File:</h1>
+        <p>{firstLine}</p>
       </div>
+      <div>
+        <button className="btn btn-secondary m-5" onClick={fetchSecretData}>Fetch Secret Data</button>
+        {/* <button className="btn btn-secondary m-5" onClick={() => { testCode() }}> testCode</button> */}
+        {readSecretData && (
+          <div>
+            <pre>{JSON.stringify(readSecretData, null, 2)}</pre>   // this gives the whole JSON file  
+            <h2> {readSecretData.seed[0].name} : {readSecretData.seed[0].description}</h2>
+          </div>
+        )}
+      </div>      
     </div>
+    
   )   // End return
 }
 
